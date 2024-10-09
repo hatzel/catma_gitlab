@@ -197,6 +197,7 @@ def get_annotation_pairs(
         tag_filter: list = None,
         filter_both_ac: bool = False,
         property_filter: str = None,
+        skip_unmatched: bool = False
         verbose: bool = True) -> List[Union[Tuple[Annotation, EmptyAnnotation], Tuple[Annotation, Annotation]]]:
     """
     For each annotation in `ac1`, finds the best matching annotation (maximum overlap) in `ac2`. Where there is no matching
@@ -246,16 +247,17 @@ def get_annotation_pairs(
         # test if any overlapping annotations were found in ac2_annotations
         if len(overlapping_annotations) < 1:
             missing_an2_annotations += 1
-            pair_list.append(
-                (
-                    an1,
-                    EmptyAnnotation(
-                        start_point=an1.start_point,
-                        end_point=an1.end_point,
-                        property_dict={key: '#None#' for key in an1.properties}
+            if not skip_unmatched:
+                pair_list.append(
+                    (
+                        an1,
+                        EmptyAnnotation(
+                            start_point=an1.start_point,
+                            end_point=an1.end_point,
+                            property_dict={key: '#None#' for key in an1.properties}
+                        )
                     )
                 )
-            )
         else:
             best_matching_annotation = test_max_overlap(
                 silver_annotation=an1,
