@@ -705,6 +705,58 @@ class CatmaProject:
             annotation_collections=annotation_collections,
             color_col=color_col
         )
+    
+    def get_iaa_many(
+        self,
+        ac_names: List[AnnotationCollection],
+        tag_filter: list = None,
+        filter_both_ac: bool = False,
+        level: str = 'tag',
+        include_empty_annotations: bool = True,
+        distance: str = 'binary',
+        verbose: bool = False) -> None:
+        from nltk.metrics.agreement import AnnotationTask
+        from nltk.metrics import interval_distance, binary_distance
+
+        if distance == 'interval':
+            distance_function = interval_distance
+        else:
+            distance_function = binary_distance
+
+        all_pairs = []
+        for second in ac_names[1:]:
+            all_pairs.append(get_annotation_pairs(
+                ac1=ac_names[0],
+                ac2=second,
+                tag_filter=tag_filter,
+                filter_both_ac=filter_both_ac,
+                property_filter=level.replace(
+                    'prop:', '') if 'prop:' in level else None,
+                verbose=verbose,
+                skip_unmatched=False,
+            ))
+        matched_data = []
+        for pairs in zip(*all_pairs):
+            for p in pairs:
+                assert pairs[0][0] == p[0]
+            matched_data.append(list(pairs[0]) + [p[1] for p in pairs[1:]])
+        data = list(get_iaa_data(matched_data, level=level, include_empty_annotations=include_empty_annotations))
+        annotation_task = AnnotationTask(data=data, distance=distance_function)
+
+        try:
+            pi = annotation_task.pi()
+            kappa = annotation_task.multi_kappa()
+            alpha = annotation_task.alpha()
+        except ZeroDivisionError:
+            print(f"Couldn't find compute IAA for {level} due to missing overlapping annotations with the given settings.")
+            pi, kappa, alpha = (0, 0, 0)
+
+        return {
+            "Scott's Pi": pi,
+            "Fleiss Kappa": kappa,
+            "Krippendorf's Alpha": alpha
+        }, get_confusion_matrix(pair_list=matched_data, level=level)
+
 
     def get_iaa(
         self,
@@ -716,7 +768,7 @@ class CatmaProject:
         include_empty_annotations: bool = True,
         distance: str = 'binary',
         verbose: bool = False,
-        return_as_dict: bool = False) -> None:
+        skip_unmatched: bool = False) -> None:
         """Computes Inter Annotator Agreement for 2 Annotation Collections.
         See the [demo notebook](https://github.com/forTEXT/gitma/blob/main/demo/notebooks/inter_annotator_agreement.ipynb)
         for details.
@@ -759,6 +811,7 @@ class CatmaProject:
             property_filter=level.replace(
                 'prop:', '') if 'prop:' in level else None,
             verbose=verbose,
+            skip_unmatched=skip_unmatched,
         )
 
         # transform annotation pairs to data format the nltk AnnotationTask class takes as input
@@ -786,20 +839,11 @@ class CatmaProject:
                 """
             ))
 
-        if return_as_dict:
-            return {
-                "Scott's Pi": pi,
-                "Cohen's Kappa": kappa,
-                "Krippendorf's Alpha": alpha
-            }
-        else:
-            if verbose:
-                print(textwrap.dedent(
-                    f"""Confusion Matrix
-                    -------
-                    """
-                ))
-            return get_confusion_matrix(pair_list=annotation_pairs, level=level)
+        return {
+            "Scott's Pi": pi,
+            "Cohen's Kappa": kappa,
+            "Krippendorf's Alpha": alpha
+        }, get_confusion_matrix(pair_list=annotation_pairs, level=level)
 
     def gamma_agreement(
         self,
